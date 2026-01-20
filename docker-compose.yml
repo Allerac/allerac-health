@@ -1,0 +1,143 @@
+services:
+  # PostgreSQL - Dados de usuarios e configuracoes
+  postgres:
+    image: postgres:16-alpine
+    container_name: allerac-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-allerac_health}
+      POSTGRES_USER: ${POSTGRES_USER:-allerac}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-allerac_secret}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-allerac} -d ${POSTGRES_DB:-allerac_health}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis - Cache e fila de jobs
+  redis:
+    image: redis:7-alpine
+    container_name: allerac-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # InfluxDB - Dados de saude/metricas
+  influxdb:
+    image: influxdb:1.11
+    container_name: allerac-influxdb
+    restart: unless-stopped
+    environment:
+      INFLUXDB_DB: ${INFLUXDB_DB:-health_metrics}
+      INFLUXDB_USER: ${INFLUXDB_USER:-allerac}
+      INFLUXDB_USER_PASSWORD: ${INFLUXDB_PASSWORD:-allerac_secret}
+      INFLUXDB_DATA_INDEX_VERSION: tsi1
+    volumes:
+      - influxdb_data:/var/lib/influxdb
+    ports:
+      - "8086:8086"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API - FastAPI
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: allerac-backend
+    restart: unless-stopped
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-allerac_health}
+      - POSTGRES_USER=${POSTGRES_USER:-allerac}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-allerac_secret}
+      - REDIS_URL=redis://redis:6379/0
+      - INFLUXDB_HOST=influxdb
+      - INFLUXDB_PORT=8086
+      - INFLUXDB_DB=${INFLUXDB_DB:-health_metrics}
+      - INFLUXDB_USER=${INFLUXDB_USER:-allerac}
+      - INFLUXDB_PASSWORD=${INFLUXDB_PASSWORD:-allerac_secret}
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-32-byte-key-for-encryption-here}
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+
+  # Worker - Celery para jobs em background
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: allerac-worker
+    restart: unless-stopped
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-allerac_health}
+      - POSTGRES_USER=${POSTGRES_USER:-allerac}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-allerac_secret}
+      - REDIS_URL=redis://redis:6379/0
+      - INFLUXDB_HOST=influxdb
+      - INFLUXDB_PORT=8086
+      - INFLUXDB_DB=${INFLUXDB_DB:-health_metrics}
+      - INFLUXDB_USER=${INFLUXDB_USER:-allerac}
+      - INFLUXDB_PASSWORD=${INFLUXDB_PASSWORD:-allerac_secret}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-32-byte-key-for-encryption-here}
+    volumes:
+      - ./worker:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+
+  # Frontend - Next.js
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: allerac-frontend
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-change-me-in-production}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:
+  influxdb_data:
