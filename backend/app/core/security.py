@@ -73,7 +73,9 @@ def decode_token_allerac_one(token: str) -> Optional[dict]:
     try:
         payload = jwt.decode(token, settings.allerac_one_secret_key, algorithms=[settings.algorithm])
         return payload
-    except JWTError:
+    except JWTError as e:
+        import logging
+        logging.getLogger(__name__).error(f"[decode_token_allerac_one] JWTError: {e}")
         return None
 
 
