@@ -85,6 +85,8 @@ export const garminApi = {
     api.post('/api/v1/garmin/mfa', data),
 
   disconnect: () => api.delete('/api/v1/garmin/disconnect'),
+
+  triggerSync: () => api.post('/api/v1/garmin/sync'),
 }
 
 // Health API
@@ -97,6 +99,6 @@ export const healthApi = {
   getDailyMetrics: (date: string) =>
     api.get(`/api/v1/health/daily/${date}`),
 
-  getSummary: (period: 'week' | 'month' | 'year' = 'week') =>
+  getSummary: (period: 'day' | 'week' | 'month' | 'year' = 'week') =>
     api.get('/api/v1/health/summary', { params: { period } }),
 }

@@ -11,6 +11,9 @@ alembic==1.13.1
 # Redis
 redis==5.0.1
 
+# Celery (apenas para enviar tasks ao worker)
+celery==5.3.6
+
 # InfluxDB
 influxdb==5.3.2
 
@@ -22,13 +25,12 @@ python-multipart==0.0.6
 # Encryption
 cryptography==42.0.1
 
-# Garmin Connect (compatible versions)
-garminconnect==0.2.24    
-garth==0.4.47
+# Garmin Connect
+garminconnect==0.2.38
 
 # Validation
-pydantic==2.5.3
-pydantic-settings==2.1.0
+pydantic>=2.6.0
+pydantic-settings>=2.2.0
 email-validator==2.1.0
 
 # HTTP Client

@@ -68,13 +68,15 @@ async def get_daily_metrics(
 
 @router.get("/summary")
 async def get_summary(
-    period: str = Query(default="week", pattern="^(week|month|year)$"),
+    period: str = Query(default="week", pattern="^(day|week|month|year)$"),
     current_user: User = Depends(get_current_user),
 ):
     """Obter resumo de metricas por periodo."""
     end_date = date.today()
 
-    if period == "week":
+    if period == "day":
+        start_date = end_date
+    elif period == "week":
         start_date = end_date - timedelta(days=7)
     elif period == "month":
         start_date = end_date - timedelta(days=30)

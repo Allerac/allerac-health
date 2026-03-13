@@ -2,7 +2,7 @@ services:
   # PostgreSQL - Dados de usuarios e configuracoes
   postgres:
     image: postgres:16-alpine
-    container_name: allerac-postgres
+    container_name: allerac-health-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-allerac_health}
@@ -11,23 +11,23 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
-    ports:
-      - "5432:5432"
+    networks:
+      - allerac-health
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-allerac} -d ${POSTGRES_DB:-allerac_health}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # Redis - Cache e fila de jobs
+  # Redis - Cache e fila de jobs (internal only)
   redis:
     image: redis:7-alpine
-    container_name: allerac-redis
+    container_name: allerac-health-redis
     restart: unless-stopped
     volumes:
       - redis_data:/data
-    ports:
-      - "6379:6379"
+    networks:
+      - allerac-health
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -37,7 +37,7 @@ services:
   # InfluxDB - Dados de saude/metricas
   influxdb:
     image: influxdb:1.11
-    container_name: allerac-influxdb
+    container_name: allerac-health-influxdb
     restart: unless-stopped
     environment:
       INFLUXDB_DB: ${INFLUXDB_DB:-health_metrics}
@@ -46,8 +46,8 @@ services:
       INFLUXDB_DATA_INDEX_VERSION: tsi1
     volumes:
       - influxdb_data:/var/lib/influxdb
-    ports:
-      - "8086:8086"
+    networks:
+      - allerac-health
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8086/ping"]
       interval: 10s
@@ -59,7 +59,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: allerac-backend
+    container_name: allerac-health-backend
     restart: unless-stopped
     environment:
       - POSTGRES_HOST=postgres
@@ -75,10 +75,14 @@ services:
       - INFLUXDB_PASSWORD=${INFLUXDB_PASSWORD:-allerac_secret}
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-32-byte-key-for-encryption-here}
+      - ALLERAC_ONE_SECRET_KEY=${ALLERAC_ONE_SECRET_KEY:-}
     volumes:
       - ./backend:/app
     ports:
       - "8000:8000"
+    networks:
+      - allerac-health
+      - allerac
     depends_on:
       postgres:
         condition: service_healthy
@@ -92,7 +96,7 @@ services:
     build:
       context: ./worker
       dockerfile: Dockerfile
-    container_name: allerac-worker
+    container_name: allerac-health-worker
     restart: unless-stopped
     environment:
       - POSTGRES_HOST=postgres
@@ -109,6 +113,8 @@ services:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-32-byte-key-for-encryption-here}
     volumes:
       - ./worker:/app
+    networks:
+      - allerac-health
     depends_on:
       postgres:
         condition: service_healthy
@@ -122,20 +128,50 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: allerac-frontend
+    container_name: allerac-health-frontend
     restart: unless-stopped
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
-      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3002}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-change-me-in-production}
     volumes:
       - ./frontend:/app
       - /app/node_modules
       - /app/.next
     ports:
-      - "3000:3000"
+      - "3002:3000"
+    networks:
+      - allerac-health
     depends_on:
       - backend
+
+  # Cloudflare Tunnel — exposes health.allerac.ai and API publicly
+  # Configure public hostnames in Cloudflare Zero Trust dashboard:
+  #   health.allerac.ai     → http://localhost:3002  (frontend)
+  #   health-api.allerac.ai → http://localhost:8000  (backend, optional)
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: allerac-health-tunnel
+    restart: unless-stopped
+    command: tunnel run
+    network_mode: host
+    environment:
+      - TUNNEL_TOKEN=${HEALTH_TUNNEL_TOKEN:?HEALTH_TUNNEL_TOKEN is required for tunnel}
+    depends_on:
+      - frontend
+      - backend
+    profiles:
+      - tunnel
+
+networks:
+  # Internal network for allerac-health services
+  allerac-health:
+    name: allerac-health
+  # Shared network with allerac-one (optional — enables direct container communication)
+  # The install.sh script creates this network automatically.
+  allerac:
+    name: allerac
+    external: true
 
 volumes:
   postgres_data:

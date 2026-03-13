@@ -54,9 +54,24 @@ def create_refresh_token(data: dict) -> str:
 
 
 def decode_token(token: str) -> Optional[dict]:
-    """Decode and validate JWT token."""
+    """Decode and validate JWT token using the local secret key."""
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        return payload
+    except JWTError:
+        return None
+
+
+def decode_token_allerac_one(token: str) -> Optional[dict]:
+    """Decode a JWT token issued by allerac-one.
+
+    Returns the payload if valid, or None if the integration is not configured
+    or the token is invalid.
+    """
+    if not settings.allerac_one_secret_key:
+        return None
+    try:
+        payload = jwt.decode(token, settings.allerac_one_secret_key, algorithms=[settings.algorithm])
         return payload
     except JWTError:
         return None

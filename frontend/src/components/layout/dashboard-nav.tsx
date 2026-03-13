@@ -21,13 +21,47 @@ export function DashboardNav() {
   }
 
   return (
-    <aside className="w-64 bg-white border-r min-h-screen p-4 flex flex-col">
-      <Link href="/dashboard" className="flex items-center gap-2 mb-8 px-2">
-        <Activity className="h-8 w-8 text-blue-600" />
-        <span className="text-xl font-bold text-gray-900">Allerac Health</span>
-      </Link>
+    <>
+      {/* Sidebar — desktop */}
+      <aside className="hidden md:flex w-64 bg-white dark:bg-gray-900 border-r dark:border-gray-800 min-h-screen p-4 flex-col">
+        <Link href="/dashboard" className="flex items-center gap-2 mb-8 px-2">
+          <Activity className="h-8 w-8 text-blue-600" />
+          <span className="text-xl font-bold text-gray-900 dark:text-gray-100">Allerac Health</span>
+        </Link>
 
-      <nav className="flex-1 space-y-1">
+        <nav className="flex-1 space-y-1">
+          {navItems.map((item) => {
+            const isActive = pathname === item.href
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-blue-50 dark:bg-blue-950 text-blue-600'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+                )}
+              >
+                <item.icon className="h-5 w-5" />
+                {item.label}
+              </Link>
+            )
+          })}
+        </nav>
+
+        <Button
+          variant="ghost"
+          className="justify-start gap-3 text-gray-600 hover:text-gray-900"
+          onClick={handleLogout}
+        >
+          <LogOut className="h-5 w-5" />
+          Sign Out
+        </Button>
+      </aside>
+
+      {/* Bottom nav — mobile */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-gray-900 border-t dark:border-gray-800 flex items-center justify-around px-2 h-16">
         {navItems.map((item) => {
           const isActive = pathname === item.href
           return (
@@ -35,10 +69,8 @@ export function DashboardNav() {
               key={item.href}
               href={item.href}
               className={cn(
-                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                isActive
-                  ? 'bg-blue-50 text-blue-600'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                'flex flex-col items-center gap-1 px-4 py-2 rounded-lg text-xs font-medium transition-colors',
+                isActive ? 'text-blue-600' : 'text-gray-500'
               )}
             >
               <item.icon className="h-5 w-5" />
@@ -46,16 +78,14 @@ export function DashboardNav() {
             </Link>
           )
         })}
+        <button
+          onClick={handleLogout}
+          className="flex flex-col items-center gap-1 px-4 py-2 rounded-lg text-xs font-medium text-gray-500"
+        >
+          <LogOut className="h-5 w-5" />
+          Sign Out
+        </button>
       </nav>
-
-      <Button
-        variant="ghost"
-        className="justify-start gap-3 text-gray-600 hover:text-gray-900"
-        onClick={handleLogout}
-      >
-        <LogOut className="h-5 w-5" />
-        Sign Out
-      </Button>
-    </aside>
+    </>
   )
 }

@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from celery import Celery
+import os
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime, timedelta, timezone
@@ -12,6 +14,8 @@ from app.schemas.garmin import GarminConnect, GarminMFA, GarminStatus
 from app.services.garmin import GarminService
 
 router = APIRouter()
+
+_celery = Celery(broker=os.getenv("REDIS_URL", "redis://redis:6379/0"))
 
 
 @router.get("/status", response_model=GarminStatus)
@@ -120,14 +124,12 @@ async def connect_garmin(
             )
             creds = creds_result.scalar_one_or_none()
 
+            session_dump = result.get("session_dump", "{}")
+
             if creds:
                 creds.email_encrypted = encrypt_data(data.email)
-                creds.oauth1_token_encrypted = encrypt_data(
-                    result.get("client_state", "{}")
-                )
-                creds.oauth2_token_encrypted = encrypt_data(
-                    "{}"
-                )  # Store empty for oauth2
+                creds.oauth1_token_encrypted = encrypt_data(session_dump)
+                creds.oauth2_token_encrypted = encrypt_data("{}")
                 creds.is_connected = True
                 creds.mfa_pending = False
                 creds.last_error = None
@@ -135,10 +137,8 @@ async def connect_garmin(
                 creds = GarminCredentials(
                     user_id=current_user.id,
                     email_encrypted=encrypt_data(data.email),
-                    oauth1_token_encrypted=encrypt_data(
-                        result.get("client_state", "{}")
-                    ),
-                    oauth2_token_encrypted=encrypt_data("{}"),  # Store empty for oauth2
+                    oauth1_token_encrypted=encrypt_data(session_dump),
+                    oauth2_token_encrypted=encrypt_data("{}"),
                     is_connected=True,
                     mfa_pending=False,
                 )
@@ -205,11 +205,9 @@ async def submit_mfa(
 
             if creds:
                 creds.oauth1_token_encrypted = encrypt_data(
-                    result.get("client_state", "{}")
+                    result.get("session_dump", "{}")
                 )
-                creds.oauth2_token_encrypted = encrypt_data(
-                    "{}"
-                )  # Store empty for oauth2
+                creds.oauth2_token_encrypted = encrypt_data("{}")
                 creds.is_connected = True
                 creds.mfa_pending = False
                 creds.last_error = None
@@ -239,6 +237,31 @@ async def submit_mfa(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error validating MFA: {str(e)}",
         )
+
+
+@router.post("/sync", status_code=status.HTTP_202_ACCEPTED)
+async def trigger_sync(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Dispara sync manual dos dados Garmin."""
+    result = await db.execute(
+        select(GarminCredentials).where(GarminCredentials.user_id == current_user.id)
+    )
+    creds = result.scalar_one_or_none()
+
+    if not creds or not creds.is_connected:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Garmin nao conectado",
+        )
+
+    _celery.send_task(
+        "app.tasks.garmin_fetch.initial_sync",
+        args=[str(current_user.id)],
+    )
+
+    return {"message": "Sync iniciado"}
 
 
 @router.delete("/disconnect", status_code=status.HTTP_204_NO_CONTENT)

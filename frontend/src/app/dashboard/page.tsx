@@ -10,6 +10,7 @@ import {
   Loader2,
   AlertCircle,
   Watch,
+  RefreshCw,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -18,10 +19,11 @@ import { MetricCard } from '@/components/charts/metric-card'
 import { ActivityChart } from '@/components/charts/activity-chart'
 import { HeartRateChart } from '@/components/charts/heart-rate-chart'
 import { SleepChart } from '@/components/charts/sleep-chart'
+import { BodyBatteryChart } from '@/components/charts/body-battery-chart'
 import { healthApi, garminApi } from '@/lib/api'
 import Link from 'next/link'
 
-type Period = 'week' | 'month' | 'year'
+type Period = 'day' | 'week' | 'month' | 'year'
 
 interface DailyMetric {
   date: string
@@ -46,6 +48,13 @@ interface SleepMetric {
   total: number
 }
 
+interface BodyBatteryMetric {
+  date: string
+  max: number
+  min: number
+  end: number
+}
+
 interface Summary {
   avg_steps: number
   avg_calories: number
@@ -62,8 +71,11 @@ export default function DashboardPage() {
   const [dailyMetrics, setDailyMetrics] = useState<DailyMetric[]>([])
   const [heartRateMetrics, setHeartRateMetrics] = useState<HeartRateMetric[]>([])
   const [sleepMetrics, setSleepMetrics] = useState<SleepMetric[]>([])
+  const [bodyBatteryMetrics, setBodyBatteryMetrics] = useState<BodyBatteryMetric[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
   const [error, setError] = useState('')
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [syncMessage, setSyncMessage] = useState('')
 
   useEffect(() => {
     checkGarminConnection()
@@ -74,6 +86,21 @@ export default function DashboardPage() {
       fetchData()
     }
   }, [period, isGarminConnected])
+
+  const handleSync = async () => {
+    setIsSyncing(true)
+    setSyncMessage('')
+    try {
+      await garminApi.triggerSync()
+      setSyncMessage('Sync iniciado! Os dados serão atualizados em alguns minutos.')
+      setTimeout(() => setSyncMessage(''), 5000)
+    } catch {
+      setSyncMessage('Erro ao iniciar sync.')
+      setTimeout(() => setSyncMessage(''), 3000)
+    } finally {
+      setIsSyncing(false)
+    }
+  }
 
   const checkGarminConnection = async () => {
     try {
@@ -92,7 +119,7 @@ export default function DashboardPage() {
     setIsLoading(true)
     setError('')
 
-    const days = period === 'week' ? 7 : period === 'month' ? 30 : 365
+    const days = period === 'day' ? 0 : period === 'week' ? 7 : period === 'month' ? 30 : 365
     const startDate = format(subDays(new Date(), days), 'yyyy-MM-dd')
     const endDate = format(new Date(), 'yyyy-MM-dd')
 
@@ -130,9 +157,17 @@ export default function DashboardPage() {
         total: Math.round((d.duration || 0) / 60),
       })) || []
 
+      const bbData: BodyBatteryMetric[] = metrics.body_battery?.map((d: { date: string; max?: number; min?: number; end?: number }) => ({
+        date: format(new Date(d.date), 'MMM d'),
+        max: Math.round(d.max || 0),
+        min: Math.round(d.min || 0),
+        end: Math.round(d.end || 0),
+      })) || []
+
       setDailyMetrics(dailyData)
       setHeartRateMetrics(hrData)
       setSleepMetrics(sleepData)
+      setBodyBatteryMetrics(bbData)
       setSummary(summaryResponse.data)
     } catch (err: unknown) {
       const error = err as { response?: { data?: { detail?: string | Array<{ msg: string }> } } }
@@ -182,10 +217,10 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <div className="flex gap-2">
-          {(['week', 'month', 'year'] as Period[]).map((p) => (
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Dashboard</h1>
+        <div className="flex gap-2 flex-wrap">
+          {(['day', 'week', 'month', 'year'] as Period[]).map((p) => (
             <Button
               key={p}
               variant={period === p ? 'default' : 'outline'}
@@ -195,8 +230,22 @@ export default function DashboardPage() {
               {p.charAt(0).toUpperCase() + p.slice(1)}
             </Button>
           ))}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSync}
+            disabled={isSyncing}
+          >
+            <RefreshCw className={`h-4 w-4 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
+            {isSyncing ? 'Syncing...' : 'Sync'}
+          </Button>
         </div>
       </div>
+      {syncMessage && (
+        <Alert>
+          <AlertDescription>{syncMessage}</AlertDescription>
+        </Alert>
+      )}
 
       {error && (
         <Alert variant="destructive">
@@ -212,23 +261,23 @@ export default function DashboardPage() {
       ) : (
         <>
           {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
             <MetricCard
               title="Avg Steps"
-              value={summary?.avg_steps?.toLocaleString() || '—'}
+              value={summary?.avg_steps != null ? Math.round(summary.avg_steps).toLocaleString() : '—'}
               icon={<Footprints className="h-5 w-5" />}
               change={summary?.steps_change}
             />
             <MetricCard
               title="Avg Calories"
-              value={summary?.avg_calories?.toLocaleString() || '—'}
+              value={summary?.avg_calories != null ? Math.round(summary.avg_calories).toLocaleString() : '—'}
               unit="kcal"
               icon={<Flame className="h-5 w-5" />}
               change={summary?.calories_change}
             />
             <MetricCard
               title="Resting Heart Rate"
-              value={summary?.avg_resting_hr || '—'}
+              value={summary?.avg_resting_hr != null ? Math.round(summary.avg_resting_hr) : '—'}
               unit="bpm"
               icon={<Heart className="h-5 w-5" />}
             />
@@ -241,7 +290,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Activity Charts */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Steps</CardTitle>
@@ -297,6 +346,22 @@ export default function DashboardPage() {
             <CardContent>
               {sleepMetrics.length > 0 ? (
                 <SleepChart data={sleepMetrics} />
+              ) : (
+                <div className="h-[300px] flex items-center justify-center text-gray-400">
+                  No data available
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Body Battery Chart */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Body Battery</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {bodyBatteryMetrics.length > 0 ? (
+                <BodyBatteryChart data={bodyBatteryMetrics} />
               ) : (
                 <div className="h-[300px] flex items-center justify-center text-gray-400">
                   No data available

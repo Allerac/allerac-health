@@ -1,200 +1,191 @@
 """
 Servico de integracao com Garmin Connect.
 
-Versao simplificada que funciona com as bibliotecas atuais.
+Fluxo MFA correto: a thread de login fica bloqueada esperando o codigo MFA
+via Queue. A sessao é mantida em memória enquanto aguarda o usuario.
 """
 
 import json
 import logging
 import asyncio
-import time
+import threading
+import queue
+import uuid
 from typing import Dict, Any, Optional
-from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
-# Thread pool for running blocking Garmin calls
-_executor = ThreadPoolExecutor(max_workers=3)
+# Sessoes MFA pendentes: session_id -> { mfa_queue, result_queue, created_at }
+_pending_sessions: Dict[str, Dict] = {}
+_sessions_lock = threading.Lock()
+
+
+def _cleanup_expired_sessions():
+    """Remove sessoes MFA expiradas (> 10 minutos)."""
+    cutoff = datetime.utcnow() - timedelta(minutes=10)
+    with _sessions_lock:
+        expired = [
+            sid
+            for sid, s in _pending_sessions.items()
+            if s["created_at"] < cutoff
+        ]
+        for sid in expired:
+            logger.info(f"Removing expired MFA session {sid}")
+            del _pending_sessions[sid]
 
 
 class GarminService:
-    """Servico para autenticacao Garmin Connect."""
 
-    def _do_initial_login(self, email: str, password: str) -> Dict[str, Any]:
-        """
-        First step: Try login with garminconnect.
-        """
-        from garminconnect import Garmin
-
-        logger.info(f"Starting Garmin initial login for {email}")
-
-        try:
-            # Define a mock MFA prompt function that raises an exception
-            # This will trigger the MFA flow we can handle
-            def mock_prompt_mfa():
-                # This will be called if MFA is required
-                # We want to capture this and handle it ourselves
-                raise Exception("MFA_REQUIRED")
-
-            # Try login with mock MFA handler
-            garmin = Garmin(email=email, password=password)
-
-            # Try to access the garth login directly with our mock function
-            try:
-                result = garmin.garth.login(email, password, prompt_mfa=mock_prompt_mfa)
-                logger.info(f"Login successful without MFA")
-
-                # Get client state for storage
-                client_state = {}
-                if hasattr(garmin.garth, "client") and hasattr(
-                    garmin.garth.client, "client_state"
-                ):
-                    client_state = garmin.garth.client.client_state
-
-                return {
-                    "status": "success",
-                    "client_state": json.dumps(client_state),
-                }
-
-            except Exception as mfa_error:
-                if "MFA_REQUIRED" in str(mfa_error):
-                    logger.info("MFA required - detected from mock function")
-                    return {
-                        "status": "mfa_required",
-                        "session_data": json.dumps(
-                            {
-                                "email": email,
-                                "password": password,
-                            }
-                        ),
-                        "message": "MFA code required. Please check your email or phone.",
-                    }
-                else:
-                    # Different error, re-raise
-                    raise
-
-        except Exception as e:
-            error_str = str(e).lower()
-            logger.error(f"Login error: {e}")
-
-            # Check for MFA indicators in error message
-            if any(
-                x in error_str
-                for x in ["mfa", "two-factor", "verification", "2fa", "challenge"]
-            ):
-                logger.info("MFA required - detected from error message")
-                return {
-                    "status": "mfa_required",
-                    "session_data": json.dumps(
-                        {
-                            "email": email,
-                            "password": password,
-                        }
-                    ),
-                    "message": "MFA code required. Please check your email or phone.",
-                }
-
-            # Not MFA related, re-raise
-            raise
-
-    async def authenticate(self, email: str, password: str) -> Dict[str, Any]:
-        """First step of authentication."""
-        try:
-            loop = asyncio.get_event_loop()
-            result = await asyncio.wait_for(
-                loop.run_in_executor(
-                    _executor, self._do_initial_login, email, password
-                ),
-                timeout=60.0,
-            )
-            return result
-
-        except asyncio.TimeoutError:
-            logger.error("Garmin login timed out after 60s")
-            raise Exception("Connection to Garmin timed out. Please try again.")
-
-        except Exception as e:
-            logger.error(f"Erro ao autenticar no Garmin: {e}", exc_info=True)
-            raise
-
-    def _do_mfa_login(
+    def _run_login(
         self,
         email: str,
         password: str,
-        mfa_code: str,
-        client_state: Optional[Dict] = None,
-    ) -> Dict[str, Any]:
-        """Complete login with MFA code."""
+        session_id: str,
+        mfa_queue: "queue.Queue[str]",
+        result_queue: "queue.Queue[Dict]",
+        mfa_needed_event: threading.Event,
+    ):
+        """
+        Roda em thread separada. Faz login no Garmin.
+        Se MFA for necessario, sinaliza o evento e bloqueia na fila esperando o codigo.
+        """
         from garminconnect import Garmin
 
-        logger.info(f"Completing MFA login for {email} with code {mfa_code[:2]}***")
+        def prompt_mfa() -> str:
+            logger.info(f"MFA required for session {session_id}")
+            mfa_needed_event.set()
+            try:
+                code = mfa_queue.get(timeout=310)  # 5 min + margem
+                logger.info(f"MFA code received for session {session_id}")
+                return code
+            except queue.Empty:
+                raise Exception("MFA timeout: user did not provide code in time")
 
         try:
-            # Try a fresh login with MFA code
-            # Some implementations may handle MFA automatically
             garmin = Garmin(email=email, password=password)
 
-            # Try to get MFA input handled automatically
-            # This is a simplified approach - in real implementation,
-            # you might need to use garth directly
+            # Simula browser para evitar bloqueio de bot pelo SSO do Garmin
+            garmin.garth.sess.headers.update({
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/122.0.0.0 Safari/537.36"
+                ),
+                "origin": "https://sso.garmin.com",
+                "referer": "https://sso.garmin.com/",
+            })
 
-            # For now, simulate successful MFA (this is a placeholder)
-            # In a real scenario, you'd need to integrate with Garmin's MFA flow
+            garmin.garth.login(email, password, prompt_mfa=prompt_mfa)
 
-            logger.info("MFA login simulated successfully")
-
-            # Return simple client state for now
-            dummy_state = {
-                "mfa_completed": True,
-                "email": email,
-            }
-
-            return {
-                "status": "success",
-                "client_state": json.dumps(dummy_state),
-            }
+            # Serializa a sessao autenticada
+            session_dump = garmin.garth.dumps()
+            logger.info(f"Garmin login successful for {email}")
+            result_queue.put({"status": "success", "session_dump": session_dump})
 
         except Exception as e:
-            logger.error(f"MFA login error: {e}", exc_info=True)
-            raise
+            logger.error(f"Garmin login failed for {email}: {e}", exc_info=True)
+            result_queue.put({"status": "error", "error": str(e)})
+        finally:
+            with _sessions_lock:
+                _pending_sessions.pop(session_id, None)
+
+    async def authenticate(self, email: str, password: str) -> Dict[str, Any]:
+        """
+        Inicia autenticacao Garmin.
+        Retorna 'success' com session_dump, ou 'mfa_required' com session_id.
+        """
+        _cleanup_expired_sessions()
+
+        session_id = str(uuid.uuid4())
+        mfa_queue: queue.Queue = queue.Queue()
+        result_queue: queue.Queue = queue.Queue()
+        mfa_needed_event = threading.Event()
+
+        with _sessions_lock:
+            _pending_sessions[session_id] = {
+                "mfa_queue": mfa_queue,
+                "result_queue": result_queue,
+                "created_at": datetime.utcnow(),
+            }
+
+        thread = threading.Thread(
+            target=self._run_login,
+            args=(email, password, session_id, mfa_queue, result_queue, mfa_needed_event),
+            daemon=True,
+        )
+        thread.start()
+
+        # Aguarda ate 60s por MFA ou conclusao do login
+        loop = asyncio.get_event_loop()
+        deadline = loop.time() + 60.0
+
+        while loop.time() < deadline:
+            await asyncio.sleep(0.3)
+
+            if mfa_needed_event.is_set():
+                return {
+                    "status": "mfa_required",
+                    "session_data": json.dumps({"session_id": session_id}),
+                    "message": "Codigo MFA necessario. Verifique seu email ou telefone.",
+                }
+
+            try:
+                result = result_queue.get_nowait()
+                if result["status"] == "success":
+                    return result
+                else:
+                    raise Exception(result["error"])
+            except queue.Empty:
+                pass
+
+        with _sessions_lock:
+            _pending_sessions.pop(session_id, None)
+        raise Exception("Login timeout: Garmin nao respondeu em 60s")
 
     async def complete_mfa(self, session_data: str, mfa_code: str) -> Dict[str, Any]:
-        """Second step - complete authentication with MFA code."""
-        try:
-            data = json.loads(session_data)
-            email = data["email"]
-            password = data["password"]
-            client_state = data.get("client_state")
+        """
+        Completa autenticacao enviando o codigo MFA para a thread bloqueada.
+        """
+        data = json.loads(session_data)
+        session_id = data.get("session_id")
 
-            loop = asyncio.get_event_loop()
-            result = await asyncio.wait_for(
-                loop.run_in_executor(
-                    _executor,
-                    self._do_mfa_login,
-                    email,
-                    password,
-                    mfa_code,
-                    client_state,
-                ),
-                timeout=60.0,
+        with _sessions_lock:
+            session = _pending_sessions.get(session_id)
+
+        if not session:
+            raise Exception(
+                "Sessao MFA nao encontrada ou expirada. Tente conectar novamente."
             )
-            return result
 
-        except asyncio.TimeoutError:
-            logger.error("Garmin MFA login timed out after 60s")
-            raise Exception("MFA verification timed out. Please try again.")
+        # Envia o codigo para a thread que esta aguardando
+        session["mfa_queue"].put(mfa_code)
 
-        except Exception as e:
-            logger.error(f"Erro ao completar MFA: {e}", exc_info=True)
-            raise
+        # Aguarda a thread concluir o login
+        result_queue = session["result_queue"]
+        loop = asyncio.get_event_loop()
+        deadline = loop.time() + 60.0
 
-    async def validate_tokens(self, client_state: str) -> bool:
-        """Valida se os tokens ainda sao validos."""
+        while loop.time() < deadline:
+            await asyncio.sleep(0.3)
+            try:
+                result = result_queue.get_nowait()
+                if result["status"] == "success":
+                    return result
+                else:
+                    raise Exception(result["error"])
+            except queue.Empty:
+                pass
+
+        raise Exception("MFA timeout: autenticacao nao concluiu em 60s")
+
+    async def validate_tokens(self, session_dump: str) -> bool:
+        """Verifica se os tokens ainda sao validos."""
         try:
-            # For now, just check if we have valid JSON
-            state_data = json.loads(client_state) if client_state else {}
-            return bool(state_data)
-
+            import garth
+            client = garth.Client()
+            client.loads(session_dump)
+            return True
         except Exception as e:
             logger.warning(f"Tokens invalidos: {e}")
             return False

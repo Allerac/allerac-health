@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
 
+    # allerac-one integration (optional)
+    # When set, tokens issued by allerac-one are also accepted.
+    # Must match the SECRET_KEY used in the allerac-one instance.
+    allerac_one_secret_key: str | None = None
+
     # CORS
     cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000", "*"]
 

@@ -8,9 +8,8 @@ psycopg2-binary==2.9.9
 # InfluxDB
 influxdb==5.3.2
 
-# Garmin Connect (from GitHub for return_on_mfa support)
-garminconnect @ git+https://github.com/cyberjunky/python-garminconnect.git@master
-garth==0.5.2
+# Garmin Connect
+garminconnect==0.2.38
 
 # Encryption
 cryptography==42.0.1
@@ -20,5 +19,5 @@ httpx==0.26.0
 
 # Utilities
 python-dotenv==1.0.0
-pydantic==2.5.3
-pydantic-settings==2.1.0
+pydantic>=2.6.0
+pydantic-settings>=2.2.0

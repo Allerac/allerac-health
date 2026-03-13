@@ -3,7 +3,11 @@
     "allow": [
       "Bash(mkdir:*)",
       "Bash(docker logs:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(grep -A1 \"ports:\" /home/gianclaudiocarella/wsp/allerac-one/docker-compose.local.yml | grep -v \"ports:\" | grep -v \"^--$\")",
+      "Bash(chmod +x /home/gianclaudiocarella/wsp/allerac-health/install.sh)",
+      "Bash(grep -r \"seed-data\\\\|seed_data\\\\|004_seed\" /home/gianclaudiocarella/wsp/allerac-one/src/ --include=\"*.ts\" --include=\"*.js\" --include=\"*.sql\" -l 2>/dev/null | head -10)",
+      "Bash(grep -r \"seed\" /home/gianclaudiocarella/wsp/allerac-one/src/database/migrations/ --include=\"*.sql\" -l 2>/dev/null; ls /home/gianclaudiocarella/wsp/allerac-one/src/database/migrations/ | head -20)"
     ]
   }
 }

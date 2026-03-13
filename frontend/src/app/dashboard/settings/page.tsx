@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Watch, Loader2, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
+import { useTheme } from 'next-themes'
+import { Watch, Loader2, CheckCircle, XCircle, AlertCircle, Sun, Moon, Monitor } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -21,6 +22,7 @@ type GarminStatus = {
 type ConnectionState = 'idle' | 'connecting' | 'mfa_required' | 'connected' | 'error'
 
 export default function SettingsPage() {
+  const { theme, setTheme } = useTheme()
   const [garminStatus, setGarminStatus] = useState<GarminStatus | null>(null)
   const [connectionState, setConnectionState] = useState<ConnectionState>('idle')
   const [garminEmail, setGarminEmail] = useState('')
@@ -144,8 +146,45 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Settings</h1>
+    <div className="max-w-2xl space-y-6">
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">Settings</h1>
+
+      {/* Theme */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <Sun className="h-6 w-6 text-yellow-500" />
+            <div>
+              <CardTitle>Appearance</CardTitle>
+              <CardDescription>Choose your preferred theme</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-3">
+            {[
+              { value: 'light', label: 'Light', icon: Sun },
+              { value: 'dark', label: 'Dark', icon: Moon },
+              { value: 'system', label: 'System', icon: Monitor },
+            ].map(({ value, label, icon: Icon }) => (
+              <button
+                key={value}
+                onClick={() => setTheme(value)}
+                className={`flex flex-1 flex-col items-center gap-2 rounded-lg border-2 p-4 transition-colors ${
+                  theme === value
+                    ? 'border-blue-600 bg-blue-50 dark:bg-blue-950'
+                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <Icon className={`h-5 w-5 ${theme === value ? 'text-blue-600' : 'text-gray-500'}`} />
+                <span className={`text-sm font-medium ${theme === value ? 'text-blue-600' : 'text-gray-600 dark:text-gray-400'}`}>
+                  {label}
+                </span>
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

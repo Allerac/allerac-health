@@ -1,5 +1,6 @@
 'use client'
 
+import { useChartTheme } from '@/lib/use-chart-theme'
 import {
   LineChart,
   Line,
@@ -21,28 +22,15 @@ interface HeartRateChartProps {
 }
 
 export function HeartRateChart({ data }: HeartRateChartProps) {
+  const { tooltipStyle, gridColor, textColor } = useChartTheme()
+
   return (
     <ResponsiveContainer width="100%" height={300}>
       <LineChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-        <XAxis
-          dataKey="date"
-          tick={{ fontSize: 12 }}
-          tickLine={false}
-          axisLine={false}
-        />
-        <YAxis
-          tick={{ fontSize: 12 }}
-          tickLine={false}
-          axisLine={false}
-          domain={['dataMin - 10', 'dataMax + 10']}
-        />
-        <Tooltip
-          contentStyle={{
-            backgroundColor: 'white',
-            border: '1px solid #e5e7eb',
-            borderRadius: '8px',
-          }}
+        <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+        <XAxis dataKey="date" tick={{ fontSize: 12, fill: textColor }} tickLine={false} axisLine={false} />
+        <YAxis tick={{ fontSize: 12, fill: textColor }} tickLine={false} axisLine={false} domain={['dataMin - 10', 'dataMax + 10']} />
+        <Tooltip contentStyle={tooltipStyle}
           formatter={(value: number, name: string) => {
             const labels: Record<string, string> = {
               resting: 'Resting',

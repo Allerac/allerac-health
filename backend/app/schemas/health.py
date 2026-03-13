@@ -1,55 +1,58 @@
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import datetime, date
+from datetime import date
 
 
 class DailyStats(BaseModel):
-    """Estatisticas diarias."""
     date: date
-    steps: Optional[int] = None
-    calories: Optional[int] = None
-    distance: Optional[float] = None  # km
-    active_minutes: Optional[int] = None
-    floors_climbed: Optional[int] = None
+    steps: Optional[float] = None
+    calories: Optional[float] = None
+    distance: Optional[float] = None
+    active_minutes: Optional[float] = None
+    floors_climbed: Optional[float] = None
 
 
 class SleepData(BaseModel):
-    """Dados de sono."""
     date: date
-    duration_seconds: Optional[int] = None
-    deep_sleep_seconds: Optional[int] = None
-    light_sleep_seconds: Optional[int] = None
-    rem_sleep_seconds: Optional[int] = None
-    awake_seconds: Optional[int] = None
-    sleep_score: Optional[int] = None
+    duration: Optional[float] = None
+    deep: Optional[float] = None
+    light: Optional[float] = None
+    rem: Optional[float] = None
+    awake: Optional[float] = None
+    score: Optional[float] = None
 
 
 class HeartRateData(BaseModel):
-    """Dados de frequencia cardiaca."""
     date: date
-    resting_hr: Optional[int] = None
-    max_hr: Optional[int] = None
-    avg_hr: Optional[int] = None
+    resting: Optional[float] = None
+    max: Optional[float] = None
+    avg: Optional[float] = None
 
 
 class StressData(BaseModel):
-    """Dados de stress."""
     date: date
-    avg_stress: Optional[int] = None
-    max_stress: Optional[int] = None
-    rest_stress_duration: Optional[int] = None
+    avg_stress: Optional[float] = None
+    max_stress: Optional[float] = None
+    rest_stress_duration: Optional[float] = None
 
 
 class HRVData(BaseModel):
-    """Dados de variabilidade cardiaca."""
     date: date
     weekly_avg: Optional[float] = None
     last_night: Optional[float] = None
     status: Optional[str] = None
 
 
+class BodyBatteryData(BaseModel):
+    date: date
+    max: Optional[float] = None
+    min: Optional[float] = None
+    end: Optional[float] = None
+    charged: Optional[float] = None
+    drained: Optional[float] = None
+
+
 class HealthMetrics(BaseModel):
-    """Resposta com metricas de saude."""
     user_id: str
     period_start: date
     period_end: date
@@ -58,3 +61,4 @@ class HealthMetrics(BaseModel):
     heart_rate: List[HeartRateData] = []
     stress: List[StressData] = []
     hrv: List[HRVData] = []
+    body_battery: List[BodyBatteryData] = []

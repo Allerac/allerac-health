@@ -1,5 +1,6 @@
 'use client'
 
+import { useChartTheme } from '@/lib/use-chart-theme'
 import {
   AreaChart,
   Area,
@@ -22,6 +23,7 @@ interface ActivityChartProps {
 export function ActivityChart({ data, metric }: ActivityChartProps) {
   const color = metric === 'steps' ? '#3b82f6' : '#f97316'
   const label = metric === 'steps' ? 'Steps' : 'Calories'
+  const { tooltipStyle, gridColor, textColor } = useChartTheme()
 
   return (
     <ResponsiveContainer width="100%" height={300}>
@@ -32,29 +34,17 @@ export function ActivityChart({ data, metric }: ActivityChartProps) {
             <stop offset="95%" stopColor={color} stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-        <XAxis
-          dataKey="date"
-          tick={{ fontSize: 12 }}
-          tickLine={false}
-          axisLine={false}
-        />
+        <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+        <XAxis dataKey="date" tick={{ fontSize: 12, fill: textColor }} tickLine={false} axisLine={false} />
         <YAxis
-          tick={{ fontSize: 12 }}
+          tick={{ fontSize: 12, fill: textColor }}
           tickLine={false}
           axisLine={false}
           tickFormatter={(value) =>
             metric === 'steps' ? `${(value / 1000).toFixed(0)}k` : value.toString()
           }
         />
-        <Tooltip
-          contentStyle={{
-            backgroundColor: 'white',
-            border: '1px solid #e5e7eb',
-            borderRadius: '8px',
-          }}
-          formatter={(value: number) => [value.toLocaleString(), label]}
-        />
+        <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [value.toLocaleString(), label]} />
         <Area
           type="monotone"
           dataKey={metric}
