@@ -156,7 +156,7 @@ services:
     command: tunnel run
     network_mode: host
     environment:
-      - TUNNEL_TOKEN=${HEALTH_TUNNEL_TOKEN:?HEALTH_TUNNEL_TOKEN is required for tunnel}
+      - TUNNEL_TOKEN=${HEALTH_TUNNEL_TOKEN:-}
     depends_on:
       - frontend
       - backend
