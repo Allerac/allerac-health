@@ -5,6 +5,8 @@ from jose import JWTError, jwt
 from cryptography.fernet import Fernet
 import base64
 import hashlib
+import time
+import httpx
 
 from app.config import get_settings
 
@@ -76,6 +78,60 @@ def decode_token_allerac_one(token: str) -> Optional[dict]:
     except JWTError as e:
         import logging
         logging.getLogger(__name__).error(f"[decode_token_allerac_one] JWTError: {e}")
+        return None
+
+
+_jwks_cache: dict = {"keys": None, "fetched_at": 0.0}
+_JWKS_TTL = 3600  # refresh JWKS at most once per hour
+
+
+async def _get_allerac_one_jwks() -> Optional[dict]:
+    """Fetch JWKS from allerac-one with in-memory caching."""
+    settings_obj = get_settings()
+    if not settings_obj.allerac_one_jwks_uri:
+        return None
+
+    now = time.time()
+    if _jwks_cache["keys"] and now - _jwks_cache["fetched_at"] < _JWKS_TTL:
+        return _jwks_cache["keys"]
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(settings_obj.allerac_one_jwks_uri, timeout=5.0)
+            resp.raise_for_status()
+            jwks = resp.json()
+            _jwks_cache["keys"] = jwks
+            _jwks_cache["fetched_at"] = now
+            return jwks
+    except Exception:
+        return _jwks_cache["keys"]  # return stale cache on transient errors
+
+
+async def decode_oidc_token_allerac_one(token: str) -> Optional[dict]:
+    """Validate an RS256 OIDC id_token issued by allerac-one.
+
+    Fetches the JWKS (cached 1 h), verifies signature and issuer.
+    Returns the decoded payload or None on any failure.
+    """
+    settings_obj = get_settings()
+    if not settings_obj.allerac_one_issuer or not settings_obj.allerac_one_jwks_uri:
+        return None
+
+    jwks = await _get_allerac_one_jwks()
+    if not jwks:
+        return None
+
+    try:
+        payload = jwt.decode(
+            token,
+            jwks,
+            algorithms=["RS256"],
+            issuer=settings_obj.allerac_one_issuer,
+            # audience = client_id 'allerac-health'; skip if not present in token
+            options={"verify_aud": False},
+        )
+        return payload
+    except JWTError:
         return None
 
 

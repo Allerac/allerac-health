@@ -1,4 +1,6 @@
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -9,6 +11,7 @@ from app.core.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
+    decode_oidc_token_allerac_one,
 )
 from app.models.user import User
 from app.schemas.user import UserCreate, UserResponse, UserLogin, Token, TokenWithUser
@@ -65,6 +68,63 @@ async def login(user_data: UserLogin, db: AsyncSession = Depends(get_db)):
         )
 
     # Generate tokens
+    access_token = create_access_token(data={"sub": str(user.id)})
+    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+
+    return TokenWithUser(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=UserResponse.model_validate(user),
+    )
+
+
+class AlleracOneLoginRequest(BaseModel):
+    id_token: str
+
+
+@router.post("/allerac-one", response_model=TokenWithUser)
+async def login_allerac_one(body: AlleracOneLoginRequest, db: AsyncSession = Depends(get_db)):
+    """Exchange an allerac-one OIDC id_token for local allerac-health tokens.
+
+    Validates the RS256 id_token via allerac-one's JWKS, provisions the user
+    if they don't exist yet, and returns the same {access_token, refresh_token, user}
+    response as the regular /login endpoint.
+    """
+    payload = await decode_oidc_token_allerac_one(body.id_token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired allerac-one id_token",
+        )
+
+    email = payload.get("email")
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="allerac-one token missing email claim",
+        )
+
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        user = User(
+            id=uuid.uuid4(),
+            email=email,
+            name=payload.get("name") or email.split("@")[0],
+            password_hash=None,
+            oauth_provider="allerac-one",
+            oauth_id=payload.get("sub"),
+            is_active=True,
+            is_verified=True,
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is disabled")
+
     access_token = create_access_token(data={"sub": str(user.id)})
     refresh_token = create_refresh_token(data={"sub": str(user.id)})
 

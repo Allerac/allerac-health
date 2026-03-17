@@ -76,6 +76,9 @@ services:
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-32-byte-key-for-encryption-here}
       - ALLERAC_ONE_SECRET_KEY=${ALLERAC_ONE_SECRET_KEY:-}
+      # allerac-one OIDC: id_token validation via JWKS (RS256)
+      - ALLERAC_ONE_ISSUER=${ALLERAC_ONE_ISSUER:-https://chat.allerac.ai/api/oidc}
+      - ALLERAC_ONE_JWKS_URI=${ALLERAC_ONE_JWKS_URI:-https://chat.allerac.ai/api/oidc/jwks}
     volumes:
       - ./backend:/app
     ports:
@@ -134,6 +137,10 @@ services:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
       - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3002}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-change-me-in-production}
+      # allerac-one OIDC SSO (authorization_code flow)
+      - ALLERAC_ONE_ISSUER=${ALLERAC_ONE_ISSUER:-https://chat.allerac.ai/api/oidc}
+      - ALLERAC_ONE_CLIENT_ID=${ALLERAC_ONE_CLIENT_ID:-allerac-health}
+      - ALLERAC_ONE_CLIENT_SECRET=${ALLERAC_ONE_CLIENT_SECRET:-}
     volumes:
       - ./frontend:/app
       - /app/node_modules

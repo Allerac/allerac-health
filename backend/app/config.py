@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     # Must match the SECRET_KEY used in the allerac-one instance.
     allerac_one_secret_key: str | None = None
 
+    # allerac-one OIDC integration (replaces HS256 in the future)
+    # allerac_one_issuer: OIDC issuer URL (e.g. https://chat.allerac.ai/api/oidc)
+    # allerac_one_jwks_uri: JWKS endpoint (e.g. https://chat.allerac.ai/api/oidc/jwks)
+    allerac_one_issuer: str = ""
+    allerac_one_jwks_uri: str = ""
+
     # CORS
     cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000", "*"]
 
