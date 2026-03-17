@@ -135,6 +135,8 @@ services:
     restart: unless-stopped
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
+      # Internal Docker hostname for server-side API calls (NextAuth callbacks, etc.)
+      - INTERNAL_API_URL=http://backend:8000
       - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3002}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-change-me-in-production}
       # allerac-one OIDC SSO (authorization_code flow)

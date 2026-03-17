@@ -2,7 +2,10 @@ import { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import axios from 'axios'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+// NEXT_PUBLIC_API_URL works in the browser but NOT server-side inside Docker
+// (localhost resolves to the frontend container itself, not the backend).
+// INTERNAL_API_URL is the Docker-internal hostname used for server-side calls.
+const API_URL = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export const authOptions: NextAuthOptions = {
   providers: [
