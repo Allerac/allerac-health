@@ -61,6 +61,8 @@ services:
       dockerfile: Dockerfile
     container_name: allerac-health-backend
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
@@ -75,7 +77,6 @@ services:
       - INFLUXDB_PASSWORD=${INFLUXDB_PASSWORD:-allerac_secret}
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-32-byte-key-for-encryption-here}
-      - ALLERAC_ONE_SECRET_KEY=${ALLERAC_ONE_SECRET_KEY:-}
       # allerac-one OIDC: id_token validation via JWKS (RS256)
       - ALLERAC_ONE_ISSUER=${ALLERAC_ONE_ISSUER:-https://chat.allerac.ai/api/oidc}
       - ALLERAC_ONE_JWKS_URI=${ALLERAC_ONE_JWKS_URI:-https://chat.allerac.ai/api/oidc/jwks}
