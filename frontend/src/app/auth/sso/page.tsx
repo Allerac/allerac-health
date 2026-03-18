@@ -1,18 +1,7 @@
 'use client'
 
-/**
- * SSO landing page for allerac-one sign-in.
- *
- * allerac-one redirects here with a short-lived HS256 token:
- *   https://health.allerac.ai/auth/sso?t=<token>
- *
- * This page exchanges the token for a NextAuth session and then hands off
- * to /auth/bridge, which stores the tokens in localStorage and goes to /dashboard.
- */
-
 import { useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { signIn } from 'next-auth/react'
 import { Loader2 } from 'lucide-react'
 
 export default function SSOPage() {
@@ -26,13 +15,32 @@ export default function SSOPage() {
       return
     }
 
-    signIn('credentials', { ssoToken: token, redirect: false }).then((result) => {
-      if (result?.ok) {
-        router.replace('/auth/bridge')
-      } else {
-        router.replace('/login?error=sso_failed')
-      }
+    let cancelled = false
+
+    fetch('/api/auth/sso', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
     })
+      .then((res) => {
+        if (!res.ok) throw new Error('SSO failed')
+        return res.json()
+      })
+      .then((data) => {
+        if (cancelled) return
+        localStorage.setItem('access_token', data.access_token)
+        if (data.refresh_token) {
+          localStorage.setItem('refresh_token', data.refresh_token)
+        }
+        router.replace('/dashboard')
+      })
+      .catch(() => {
+        if (!cancelled) router.replace('/login?error=sso_failed')
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [searchParams, router])
 
   return (
