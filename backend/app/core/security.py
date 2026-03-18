@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 import bcrypt
-from jose import JWTError, jwt
+from jose import JWTError, jwk as jose_jwk, jwt
 from cryptography.fernet import Fernet
 import base64
 import hashlib
@@ -122,16 +122,30 @@ async def decode_oidc_token_allerac_one(token: str) -> Optional[dict]:
         return None
 
     try:
+        header = jwt.get_unverified_header(token)
+        kid = header.get("kid")
+        keys = jwks.get("keys", [])
+
+        if kid:
+            candidates = [k for k in keys if k.get("kid") == kid]
+            key_data = candidates[0] if candidates else (keys[0] if keys else None)
+        else:
+            key_data = keys[0] if keys else None
+
+        if not key_data:
+            return None
+
+        public_key = jose_jwk.construct(key_data, algorithm="RS256")
+
         payload = jwt.decode(
             token,
-            jwks,
+            public_key,
             algorithms=["RS256"],
             issuer=settings_obj.allerac_one_issuer,
-            # audience = client_id 'allerac-health'; skip if not present in token
             options={"verify_aud": False},
         )
         return payload
-    except JWTError:
+    except Exception:
         return None
 
 
