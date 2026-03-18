@@ -11,6 +11,7 @@ from app.core.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
+    decode_token_allerac_one,
     decode_oidc_token_allerac_one,
 )
 from app.models.user import User
@@ -102,6 +103,62 @@ async def login_allerac_one(body: AlleracOneLoginRequest, db: AsyncSession = Dep
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="allerac-one token missing email claim",
+        )
+
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        user = User(
+            id=uuid.uuid4(),
+            email=email,
+            name=payload.get("name") or email.split("@")[0],
+            password_hash=None,
+            oauth_provider="allerac-one",
+            oauth_id=payload.get("sub"),
+            is_active=True,
+            is_verified=True,
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is disabled")
+
+    access_token = create_access_token(data={"sub": str(user.id)})
+    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+
+    return TokenWithUser(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=UserResponse.model_validate(user),
+    )
+
+
+class SSOLoginRequest(BaseModel):
+    token: str
+
+
+@router.post("/sso", response_model=TokenWithUser)
+async def login_sso(body: SSOLoginRequest, db: AsyncSession = Depends(get_db)):
+    """Exchange a short-lived allerac-one SSO token for local allerac-health tokens.
+
+    Validates the HS256 token signed with the shared ALLERAC_ONE_SECRET_KEY,
+    provisions the user if they don't exist yet, and returns local JWT tokens.
+    """
+    payload = decode_token_allerac_one(body.token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired SSO token",
+        )
+
+    email = payload.get("email")
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="SSO token missing email claim",
         )
 
     result = await db.execute(select(User).where(User.email == email))
